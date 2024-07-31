@@ -6,3 +6,7 @@
 /snapshot.bin
 /*.jor
 /detlog.txt
+Build/
+build/
+.xmake/
+bin/

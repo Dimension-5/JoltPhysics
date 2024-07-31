@@ -104,12 +104,12 @@
 #endif
 
 // Determine compiler
-#if defined(__clang__)
+#if defined(_MSC_VER)
+	#define JPH_COMPILER_MSVC
+#elif defined(__clang__)
 	#define JPH_COMPILER_CLANG
 #elif defined(__GNUC__)
 	#define JPH_COMPILER_GCC
-#elif defined(_MSC_VER)
-	#define JPH_COMPILER_MSVC
 #endif
 
 #if defined(__MINGW64__) || defined (__MINGW32__)
