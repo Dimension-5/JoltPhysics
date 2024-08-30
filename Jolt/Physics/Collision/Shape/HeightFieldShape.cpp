@@ -1130,18 +1130,20 @@ void HeightFieldShape::SetHeights(uint inX, uint inY, uint inSizeX, uint inSizeY
 		uint dst_range_block_offset, dst_range_block_stride;
 		sGetRangeBlockOffsetAndStride(num_blocks >> 1, max_level - 1, dst_range_block_offset, dst_range_block_stride);
 
-		// If we're starting halfway through a 2x2 block, we need to process one extra block since we take steps of 2 blocks below
-		uint block_x_end = (block_start_x & 1) && block_start_x + num_blocks_x < num_blocks? num_blocks_x + 1 : num_blocks_x;
-		uint block_y_end = (block_start_y & 1) && block_start_y + num_blocks_y < num_blocks? num_blocks_y + 1 : num_blocks_y;
+		// We'll be processing 2x2 blocks below so we need the start coordinates to be even and we extend the number of blocks to correct for that
+		if (block_start_x & 1) { --block_start_x; ++num_blocks_x; }
+		if (block_start_y & 1) { --block_start_y; ++num_blocks_y; }
 
 		// Loop over all affected blocks
-		for (uint block_y = 0; block_y < block_y_end; block_y += 2)
-			for (uint block_x = 0; block_x < block_x_end; block_x += 2)
+		uint block_end_x = block_start_x + num_blocks_x;
+		uint block_end_y = block_start_y + num_blocks_y;
+		for (uint block_y = block_start_y; block_y < block_end_y; block_y += 2)
+			for (uint block_x = block_start_x; block_x < block_end_x; block_x += 2)
 			{
 				// Get source range block
 				RangeBlock *src_range_block;
 				uint index_in_src_block;
-				GetRangeBlock(block_start_x + block_x, block_start_y + block_y, range_block_offset, range_block_stride, src_range_block, index_in_src_block);
+				GetRangeBlock(block_x, block_y, range_block_offset, range_block_stride, src_range_block, index_in_src_block);
 
 				// Determine quantized min and max value for the entire 2x2 block
 				uint16 min_value = 0xffff;
@@ -1156,7 +1158,7 @@ void HeightFieldShape::SetHeights(uint inX, uint inY, uint inSizeX, uint inSizeY
 				// Write to destination block
 				RangeBlock *dst_range_block;
 				uint index_in_dst_block;
-				GetRangeBlock((block_start_x + block_x) >> 1, (block_start_y + block_y) >> 1, dst_range_block_offset, dst_range_block_stride, dst_range_block, index_in_dst_block);
+				GetRangeBlock(block_x >> 1, block_y >> 1, dst_range_block_offset, dst_range_block_stride, dst_range_block, index_in_dst_block);
 				dst_range_block->mMin[index_in_dst_block] = uint16(min_value);
 				dst_range_block->mMax[index_in_dst_block] = uint16(max_value);
 			}
@@ -1433,6 +1435,11 @@ void HeightFieldShape::DecodeSubShapeID(const SubShapeID &inSubShapeID, uint &ou
 	// Fetch the x and y coordinate
 	outX = id % mSampleCount;
 	outY = id / mSampleCount;
+}
+
+void HeightFieldShape::GetSubShapeCoordinates(const SubShapeID &inSubShapeID, uint &outX, uint &outY, uint &outTriangleIndex) const
+{
+	DecodeSubShapeID(inSubShapeID, outX, outY, outTriangleIndex);
 }
 
 const PhysicsMaterial *HeightFieldShape::GetMaterial(const SubShapeID &inSubShapeID) const
@@ -2128,7 +2135,7 @@ void HeightFieldShape::CastRay(const RayCast &inRay, const RayCastSettings &inRa
 			mRayOrigin(inRay.mOrigin),
 			mRayDirection(inRay.mDirection),
 			mRayInvDirection(inRay.mDirection),
-			mBackFaceMode(inRayCastSettings.mBackFaceMode),
+			mBackFaceMode(inRayCastSettings.mBackFaceModeTriangles),
 			mShape(inShape),
 			mSubShapeIDCreator(inSubShapeIDCreator)
 		{

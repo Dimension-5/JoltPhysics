@@ -6,6 +6,22 @@ For breaking API changes see [this document](https://github.com/jrouwe/JoltPhysi
 
 ### New functionality
 
+* Added PlaneShape. An infinite plane. Negative half space is considered solid.
+* Use MeshShapeSettings::mPerTriangleUserData at about 25% memory increase to get per triangle user data through MeshShape::GetTriangleUserData
+* Added Shape::GetLeafShape function to be able to get a leaf shape given a sub shape ID
+* Added HeightFieldShape::GetSubShapeCoordinates to get the triangle coordinates of a particular sub shape ID
+* Split back face mode between convex/triangles for ray casts. This allows you to e.g. have meshes that do give back face hits while convex shapes don't.
+
+### Bug fixes
+
+* Fixed an issue where enhanced internal edge removal would throw away valid contacts when a dynamic compound shape is colliding with another mesh / box shape.
+* Fixed an issue where the bounding volume of a HeightFieldShape was not properly adjusted when calling SetHeights leading to missed collisions.
+* Workaround for CMake error 'CMake Error: No output files for WriteBuild!' when using the 'Ninja Multi-Config' generator.
+
+## v5.1.0
+
+### New functionality
+
 #### Soft Body
 
 * Added support for applying a global force to a soft body through Body::AddForce.
@@ -26,6 +42,7 @@ For breaking API changes see [this document](https://github.com/jrouwe/JoltPhysi
 
 * Added CharacterBaseSettings::mEnhancedInternalEdgeRemoval (default false) that allows smoother movement for both the Character and CharacterVirtual class.
 * Added ability for a CharacterVirtual to collide with another CharacterVirtual by using the new CharacterVsCharacterCollision interface.
+* Added the option to add an inner rigid body to a CharacterVirtual. This allows it to interact with sensors through the regular ContactListener and to be found by normal collision checks.
 
 #### Vehicles
 
@@ -45,7 +62,9 @@ For breaking API changes see [this document](https://github.com/jrouwe/JoltPhysi
 * QuadTree / FixedSizeFreeList: Reorder variable layout to reduce false sharing & thread syncs to reduce simulation time by approximately 5%.
 * Generate a CMake config file when the project is installed. Allows for other projects to import Jolt using the find_package() functionality.
 * Added USE_WASM_SIMD cmake option. This will enable SIMD on the emscripten WASM build.
+* Emscripten WASM build can now be compiled cross platform deterministic and deliver the same results as Windows, Linux etc.
 * Added Shape::MakeScaleValid function. This function will take a scale vector and check it against the scaling rules for the shape. If it is not valid, it will return a scale that is close to the provided scale which is valid.
+* Added cmake options to toggle exception-handling and RTTI. CPP_EXCEPTIONS_ENABLED enables exceptions, CPP_RTTI_ENABLED enables RTTI. By default they're both off as Jolt doesn't use these features. In the PerformanceTest this speeds up the simulation by about 5% for MSVC, no difference was measured for clang.
 
 ### Bug fixes
 
@@ -53,7 +72,9 @@ For breaking API changes see [this document](https://github.com/jrouwe/JoltPhysi
 * Fix error in gcc 14. Using always_inline in debug mode causes error: "inlining failed in call to 'always_inline' 'XXX': function not considered for inlining"
 * Fixed clang-18 warning "LLVMgold.so: error loading plugin ... cannot open shared object file: No such file or directory", due to https://github.com/llvm/llvm-project/issues/84271 it currently doesn't support LTO.
 * Suppress GCC warning: 'XXX' may be used uninitialized in this function [-Werror=maybe-uninitialized].
+* Fixed compile errors when compiling with GCC for the ARM platform.
 * When calling CharacterVirtual::SetShape, a collision with a sensor would cause the function to abort as if the character was in collision.
+* CharacterVirtual stick to floor / stair walk did not trigger a contact added callback on the CharacterContactListener.
 * Fixed bug where the the skinned position of a soft body would update in the first sub-iteration, causing a large velocity spike and jittery behavior.
 * Fixed bug where the velocity of soft body vertices would increase indefinitely when resting on the back stop of a skinned constraint.
 * Fixed bug when SkinVertices for a soft body is not called every frame, the previous position of the skin was still used causing a replay of the motion of the previous frame.
@@ -67,6 +88,7 @@ For breaking API changes see [this document](https://github.com/jrouwe/JoltPhysi
 * Fix SSE not being enabled on x86 32-bits.
 * Fixed a bug in the enhanced internal edge removal that could cause rigid bodies and characters to be affected by internal edges.
 * Fixed a bug in MutableCompoundShape::AdjustCenterOfMass which would fail to update the bounding box of the shape.
+* The 32 bit and 64 bit versions of the library now produce the same binary stream when serializing data to a StreamOut. Before some values would be stored as size_t which is platform dependent.
 
 ## v5.0.0
 

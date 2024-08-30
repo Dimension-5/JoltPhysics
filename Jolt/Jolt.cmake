@@ -258,6 +258,8 @@ set(JOLT_PHYSICS_SRC_FILES
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/Shape/MutableCompoundShape.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/Shape/OffsetCenterOfMassShape.cpp
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/Shape/OffsetCenterOfMassShape.h
+	${JOLT_PHYSICS_ROOT}/Physics/Collision/Shape/PlaneShape.cpp
+	${JOLT_PHYSICS_ROOT}/Physics/Collision/Shape/PlaneShape.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/Shape/PolyhedronSubmergedVolumeCalculator.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/Shape/RotatedTranslatedShape.cpp
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/Shape/RotatedTranslatedShape.h
@@ -499,7 +501,20 @@ endif()
 target_include_directories(Jolt PUBLIC
 	$<BUILD_INTERFACE:${PHYSICS_REPO_ROOT}>
 	$<INSTALL_INTERFACE:include/>)
-target_precompile_headers(Jolt PRIVATE ${JOLT_PHYSICS_ROOT}/Jolt.h)
+
+# Code coverage doesn't work when using precompiled headers
+if (CMAKE_GENERATOR STREQUAL "Ninja Multi-Config" AND MSVC)
+	# The Ninja Multi-Config generator errors out when selectively disabling precompiled headers for certain configurations.
+	# See: https://github.com/jrouwe/JoltPhysics/issues/1211
+	target_precompile_headers(Jolt PRIVATE "${JOLT_PHYSICS_ROOT}/Jolt.h")
+else()
+	target_precompile_headers(Jolt PRIVATE "$<$<NOT:$<CONFIG:ReleaseCoverage>>:${JOLT_PHYSICS_ROOT}/Jolt.h>")
+endif()
+
+if (NOT CPP_EXCEPTIONS_ENABLED)
+	# Disable use of exceptions in MSVC's STL
+	target_compile_definitions(Jolt PUBLIC $<$<BOOL:${MSVC}>:_HAS_EXCEPTIONS=0>)
+endif()
 
 # Set the debug/non-debug build flags
 target_compile_definitions(Jolt PUBLIC "$<$<CONFIG:Debug>:_DEBUG>")
@@ -664,4 +679,15 @@ else()
 
 		EMIT_X86_INSTRUCTION_SET_DEFINITIONS()
 	endif()
+endif()
+
+# On Unix flavors we need the pthread library
+if (NOT ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows") AND NOT EMSCRIPTEN)
+	target_compile_options(Jolt PUBLIC -pthread)
+endif()
+
+if (EMSCRIPTEN)
+	# We need more than the default 64KB stack and 16MB memory
+	# Also disable warning: running limited binaryen optimizations because DWARF info requested (or indirectly required)
+	target_link_options(Jolt PUBLIC -sSTACK_SIZE=1048576 -sINITIAL_MEMORY=134217728 -Wno-limited-postlink-optimizations)
 endif()
