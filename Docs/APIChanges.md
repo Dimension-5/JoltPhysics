@@ -4,8 +4,15 @@ This document lists all breaking API changes by date and by release tag. Note th
 
 Changes that make some state saved through SaveBinaryState from a prior version of the library unreadable by the new version is marked as *SBS*. See [Saving Shapes](https://jrouwe.github.io/JoltPhysics/#saving-shapes) for further information.
 
-## Changes between v5.1.0 and latest
+## Changes between v5.2.0 and latest
 
+* 20241119 - Removed the use of std::unordered_map and std::unordered_set and replaced them with our own implementation: UnorderedMap and UnorderedSet. The public facing interface includes some instances of these, e.g. Shape::ShapeToIDMap. Since these are typedeffed and the interface remained the same, applications should not notice the change. (f1420822d39c440492602b670eac8ae2f5821401)
+
+## Changes between v5.1.0 and v5.2.0
+
+* 20240927 - PhysicsStepListener::OnStep now takes a single PhysicsStepListenerContext parameter. The old parameters 'delta time' and 'physics system' are part of this context. The VehicleConstraint step callbacks use the same context. (8153cd854ce0547b2def425118e1e2f68a9e365c)
+* 20240922 - SoftBodyManifold now has a separate interface to return collisions with sensors (GetNumSensorContacts/GetSensorContactBodyID), this means they can no longer be retrieved through GetContactBodyID. (4058e6a72edc6e11630b3ec6b67d97e2b9324473)
+* 20240922 - The interface of Shape::CollideSoftBodyVertices changed. It no longer takes a list of SoftBodyVertex but instead uses CollideSoftBodyVertexIterator. Also the delta time and displacement due to gravity parameters have been removed. If you have custom shapes, you need to update the signature. (4058e6a72edc6e11630b3ec6b67d97e2b9324473)
 * 20240825 - RayCastSettings::mBackFaceMode was split into mBackFaceModeTriangles and mBackFaceModeConvex. Replace `mBackFaceMode = ...` with `SetBackFaceMode(...)` (b3cd9f4846c52a84064b7e5e9a9a9fcbfdf286de)
 * 20240823 - Added virtual function Shape::GetLeafShape. If you have custom shapes, you may need to override this function and provide an implementation. (d7f08b83670ea6d0842e231f50ad2a175f56f949)
 

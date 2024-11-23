@@ -11,6 +11,9 @@ option(DOUBLE_PRECISION "Use double precision math" OFF)
 # When turning this option on, the library will be compiled with debug symbols
 option(GENERATE_DEBUG_SYMBOLS "Generate debug symbols" ON)
 
+# Which type of debug symbols to generate, e.g. using source-map when compiling with emscripten makes compilation a lot faster
+set(JPH_DEBUG_SYMBOL_FORMAT "" CACHE STRING "Which type of debug symbols to generate")
+
 # When turning this option on, the library will override the default CMAKE_CXX_FLAGS_DEBUG/RELEASE values, otherwise they will use the platform defaults
 option(OVERRIDE_CXX_FLAGS "Override CMAKE_CXX_FLAGS_DEBUG/RELEASE" ON)
 
@@ -105,7 +108,7 @@ if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR) # Only do this when we'r
 	if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 		set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Distribution")
 	elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
-		set(CMAKE_CONFIGURATION_TYPES "Debug;Release;ReleaseASAN;ReleaseUBSAN;ReleaseCoverage;Distribution")
+		set(CMAKE_CONFIGURATION_TYPES "Debug;Release;ReleaseASAN;ReleaseUBSAN;ReleaseTSAN;ReleaseCoverage;Distribution")
 	endif()
 endif()
 
@@ -161,6 +164,7 @@ if (MSVC)
 	set(CMAKE_CXX_FLAGS_DISTRIBUTION "${CMAKE_CXX_FLAGS_RELEASE}")
 	set(CMAKE_CXX_FLAGS_RELEASEASAN "-fsanitize=address /Od")
 	set(CMAKE_CXX_FLAGS_RELEASEUBSAN "-fsanitize=undefined,implicit-conversion,float-divide-by-zero,local-bounds -fno-sanitize-recover=all")
+	set(CMAKE_CXX_FLAGS_RELEASETSAN "${CMAKE_CXX_FLAGS_RELEASE} -fsanitize=thread")
 	set(CMAKE_CXX_FLAGS_RELEASECOVERAGE "-fprofile-instr-generate -fcoverage-mapping")
 
 	# Set linker flags
@@ -179,6 +183,7 @@ if (MSVC)
 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Qunused-arguments") # Clang emits warnings about unused arguments such as /MP and /GL
 		set(CMAKE_EXE_LINKER_FLAGS_RELEASEASAN "/SUBSYSTEM:CONSOLE /LIBPATH:${CLANG_LIB_PATH} clang_rt.asan-x86_64.lib -wholearchive:clang_rt.asan-x86_64.lib clang_rt.asan_cxx-x86_64.lib -wholearchive:clang_rt.asan_cxx-x86_64.lib")
 		set(CMAKE_EXE_LINKER_FLAGS_RELEASEUBSAN "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LIBPATH:${CLANG_LIB_PATH}")
+		set(CMAKE_EXE_LINKER_FLAGS_RELEASETSAN "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LIBPATH:${CLANG_LIB_PATH}")
 		set(CMAKE_EXE_LINKER_FLAGS_RELEASECOVERAGE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LIBPATH:${CLANG_LIB_PATH}")
 	endif()
 else()
@@ -189,7 +194,7 @@ else()
 
 	# Optionally generate debug symbols
 	if (GENERATE_DEBUG_SYMBOLS)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g${JPH_DEBUG_SYMBOL_FORMAT}")
 	endif()
 
 	if (NOT CPP_RTTI_ENABLED)
@@ -240,6 +245,7 @@ else()
 	set(CMAKE_CXX_FLAGS_DISTRIBUTION "${CMAKE_CXX_FLAGS_RELEASE}")
 	set(CMAKE_CXX_FLAGS_RELEASEASAN "-fsanitize=address")
 	set(CMAKE_CXX_FLAGS_RELEASEUBSAN "-fsanitize=undefined,implicit-conversion,float-divide-by-zero,local-bounds -fno-sanitize-recover=all")
+	set(CMAKE_CXX_FLAGS_RELEASETSAN "${CMAKE_CXX_FLAGS_RELEASE} -fsanitize=thread")
 	set(CMAKE_CXX_FLAGS_RELEASECOVERAGE "-O0 -DJPH_NO_FORCE_INLINE -fprofile-instr-generate -fcoverage-mapping")
 endif()
 
@@ -252,7 +258,8 @@ function(SET_INTERPROCEDURAL_OPTIMIZATION)
 	set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DISTRIBUTION OFF PARENT_SCOPE)
 
 	# On ARM, whole program optimization triggers an internal compiler error during code gen, so we don't turn it on
-	if (INTERPROCEDURAL_OPTIMIZATION AND NOT ("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "ARM64") AND NOT ("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "ARM"))
+	# When compiling as a shared lib with MinGW, turning on LTO causes errors of the form 'ld.exe: cannot export symbol X wrong type (4 vs 3)'
+	if (INTERPROCEDURAL_OPTIMIZATION AND NOT ("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "ARM64") AND NOT ("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "ARM") AND NOT (MINGW AND BUILD_SHARED_LIBS))
 		include(CheckIPOSupported)
 		check_ipo_supported(RESULT IS_IPO_SUPPORTED OUTPUT IPO_CHECK_OUTPUT)
 
@@ -278,14 +285,19 @@ endif()
 
 # Install Jolt library and includes
 if (ENABLE_INSTALL)
+	include(GNUInstallDirs)
 	install(TARGETS Jolt
 		EXPORT JoltExport
-		DESTINATION lib)
+		INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 	foreach(SRC_FILE ${JOLT_PHYSICS_SRC_FILES})
 		string(REPLACE ${PHYSICS_REPO_ROOT} "" RELATIVE_SRC_FILE ${SRC_FILE})
 		get_filename_component(DESTINATION_PATH ${RELATIVE_SRC_FILE} DIRECTORY)
 		if (NOT RELATIVE_SRC_FILE MATCHES "\.cpp")
-			install(FILES ${SRC_FILE} DESTINATION include/${DESTINATION_PATH})
+			cmake_path(SET DST_FILE NORMALIZE "${CMAKE_INSTALL_INCLUDEDIR}/${DESTINATION_PATH}")
+			install(FILES ${SRC_FILE} DESTINATION ${DST_FILE})
 		endif()
 	endforeach()
 
@@ -294,7 +306,7 @@ if (ENABLE_INSTALL)
 		NAMESPACE Jolt::
 		FILE JoltConfig.cmake)
 	install(EXPORT JoltExport
-		DESTINATION lib/cmake/Jolt/
+		DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Jolt/
 		NAMESPACE Jolt::
 		FILE JoltConfig.cmake)
 endif()

@@ -28,7 +28,14 @@ The general life cycle of a body is:
 - BodyInterface::RemoveBody - Remove it from the PhysicsSystem.
 - BodyInterface::DestroyBody - Deinitialize and destruct the Body. You cannot use `delete` to delete a Body. This function will not automatically remove the Body from the PhysicsSystem.
 
-The BodyInterface also contains functionality to add many bodies to the simulation at the same time. It is important to use these functions when inserting many Bodies, you get a performance penalty if you don't.
+If you need to add many bodies at the same time then use the batching functions:
+
+- BodyInterface::AddBodiesPrepare - Prepares bodies to be added to the PhysicsSystem. Doesn't affect simulation and can be done from a background thread.
+- BodyInterface::AddBodiesFinalize - Finalize insertion. This atomically adds all bodies to the PhysicsSystem.
+- BodyInterface::AddBodiesAbort - If you've called AddBodiesPrepare but changed your mind and no longer want to add the bodies to the PhysicsSystem. Useful when streaming in level sections and the player decides to go the other way.
+- BodyInterface::RemoveBodies - Batch remove a lot of bodies from the PhysicsSystem.
+
+Always use the batch adding functions when possible! Adding many bodies, one at a time, results in a really inefficient broadphase and in the worst case can lead to missed collisions (an assert will trigger if this is the case). If you cannot avoid adding many bodies one at a time, use PhysicsSystem::OptimizeBroadPhase to rebuild the tree.
 
 You can call AddBody, RemoveBody, AddBody, RemoveBody to temporarily remove and later reinsert a body into the simulation.
 
@@ -81,6 +88,7 @@ Each body has a shape attached that determines the collision volume. The followi
 * [CapsuleShape](@ref CapsuleShape) - A capsule centered around zero.
 * [TaperedCapsuleShape](@ref TaperedCapsuleShape) - A capsule with different radii at the bottom and top.
 * [CylinderShape](@ref CylinderShape) - A cylinder shape. Note that cylinders are the least stable of all shapes, so use another shape if possible.
+* [TaperedCylinderShape](@ref TaperedCylinderShape) - A cylinder with different radii at the bottom and top. Note that cylinders are the least stable of all shapes, so use another shape if possible.
 * [ConvexHullShape](@ref ConvexHullShape) - A convex hull defined by a set of points.
 * [TriangleShape](@ref TriangleShape) - A single triangle. Use a MeshShape if you have multiple triangles.
 * [PlaneShape](@ref PlaneShape) - An infinite plane. Negative half space is considered solid.
@@ -88,6 +96,7 @@ Each body has a shape attached that determines the collision volume. The followi
 * [MutableCompoundShape](@ref MutableCompoundShape) - A shape containing other shapes. This shape can be constructed/changed at runtime and trades construction time for runtime performance. Child shapes are organized in a list to make modification easy.
 * [MeshShape](@ref MeshShape) - A shape consisting of triangles. They are mostly used for static geometry.
 * [HeightFieldShape](@ref HeightFieldShape) - A shape consisting of NxN points that define the height at each point, very suitable for representing hilly terrain. Any body that uses this shape needs to be static.
+* [EmptyShape](@ref EmptyShape) - A shape that collides with nothing and that can be used as a placeholder or for dummy bodies.
 
 Next to this there are a number of decorator shapes that change the behavior of their children:
 
@@ -448,7 +457,7 @@ As an example we will use a simple enum as ObjectLayer:
 * NON_MOVING - Layer for all static objects.
 * MOVING - Layer for all regular dynamic bodies.
 * DEBRIS - Layer for all debris dynamic bodies, we want to test these only against the static geometry because we want to save some simulation cost.
-* BULLET - Layer for high detail collision bodies that we attach to regular dynamic bodies. These are not used for simulation but we want extra precision when we shoot with bullets.
+* BULLET - Layer for high detail collision bodies that we co-locate with regular dynamic bodies. These are bodies that are not used for simulation but are moved to follow the dynamic bodies and provide more precise geometry for ray tests to simulate shooting bullets. See [Level of Detail](@ref level-of-detail) for more information.
 * WEAPON - This is a query layer so we don't create any bodies with this layer but we use it when doing ray cast querying for our weapon system.
 
 We define the following object layers to collide:
@@ -488,6 +497,14 @@ Now that we know about the basics, we list the order in which the collision dete
 * Contact listener: During simulation, after all collision detection work has been performed you can still choose to discard a contact point. This is a very expensive way of rejecting collisions as most of the work is already done. See [ContactListener](@ref ContactListener).
 
 To avoid work, try to filter out collisions as early as possible.
+
+## Level of Detail {#level-of-detail}
+
+Bodies can only exist in a single layer. If you want a body with a low detail collision shape for simulation (in the example above: MOVING layer) and a high detail collision shape for collision detection (BULLET layer), you'll need to create 2 Bodies.
+
+The low detail body should be dynamic. The high detail body should be kinematic, or if it doesn't interact with other dynamic objects it can also be static.
+
+After calling PhysicsSystem::Update, you'll need to loop over these dynamic bodies and call BodyInterface::MoveKinematic in case the high detail body is kinematic, or BodyInterface::SetPositionAndRotation in case the high detail body is static.
 
 ## Continuous Collision Detection {#continuous-collision-detection}
 
@@ -616,8 +633,11 @@ The most important things to look out for in your own application:
 
 * Compile your application mode in Precise mode (clang: -ffp-model=precise, MSVC: /fp:precise)
 * Turn off floating point contract operations (clang: -ffp-contract=off)
-* Do not use the standard trigonometry functions (sin, cos etc.) as they have different implementations on different platforms, use Jolt's functions (Sin, Cos etc.)
-* Do not use std::sort as it has a different implementation on different platforms, use Jolt's QuickSort function
+* Make sure the FPU state is consistent across platforms / threads. Check the floating point rounding behavior (should be nearest). Check that the denormals are zero (DAZ) and flush to zero (FTZ) flags are set consistently.
+* Do not use the standard trigonometry functions (`sin`, `cos` etc.) as they have different implementations on different platforms, use Jolt's functions ([Sin](@ref Sin), [Cos](@ref Cos) etc.).
+* Do not use `std::sort` as it has a different implementation on different platforms, use [QuickSort](@ref QuickSort) instead.
+* Do not use `std::push_heap` and `std::pop_heap` as it has a different implementation on different platforms when elements are equal, use [BinaryHeapPush](@ref BinaryHeapPush)/[BinaryHeapPop](@ref BinaryHeapPop) instead.
+* Do not use `std::hash` as it is also platform dependent, use [Hash](@ref Hash) instead.
 
 When running the Samples Application you can press ESC, Physics Settings and check the 'Check Determinism' checkbox. Before every simulation step we will record the state using the [StateRecorder](@ref StateRecorder) interface, rewind the simulation and do the step again to validate that the simulation runs deterministically. Some of the tests (e.g. the MultiThreaded) test will explicitly disable the check because they randomly add/remove bodies from different threads. This violates the rule that the API calls must be done in the same order so will not result in a deterministic simulation.
 

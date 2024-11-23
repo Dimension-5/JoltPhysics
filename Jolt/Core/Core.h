@@ -6,7 +6,7 @@
 
 // Jolt library version
 #define JPH_VERSION_MAJOR 5
-#define JPH_VERSION_MINOR 1
+#define JPH_VERSION_MINOR 2
 #define JPH_VERSION_PATCH 1
 
 // Determine which features the library was compiled with
@@ -210,7 +210,7 @@
 #ifdef JPH_SHARED_LIBRARY
 	#ifdef JPH_BUILD_SHARED_LIBRARY
 		// While building the shared library, we must export these symbols
-		#ifdef JPH_PLATFORM_WINDOWS
+		#if defined(JPH_PLATFORM_WINDOWS) && !defined(JPH_COMPILER_MINGW)
 			#define JPH_EXPORT __declspec(dllexport)
 		#else
 			#define JPH_EXPORT __attribute__ ((visibility ("default")))
@@ -221,7 +221,7 @@
 		#endif
 	#else
 		// When linking against Jolt, we must import these symbols
-		#ifdef JPH_PLATFORM_WINDOWS
+		#if defined(JPH_PLATFORM_WINDOWS) && !defined(JPH_COMPILER_MINGW)
 			#define JPH_EXPORT __declspec(dllimport)
 		#else
 			#define JPH_EXPORT __attribute__ ((visibility ("default")))
@@ -308,6 +308,7 @@
 	JPH_CLANG_SUPPRESS_WARNING("-Wgnu-zero-variadic-macro-arguments")							\
 	JPH_CLANG_SUPPRESS_WARNING("-Wdocumentation-unknown-command")								\
 	JPH_CLANG_SUPPRESS_WARNING("-Wctad-maybe-unsupported")										\
+	JPH_CLANG_SUPPRESS_WARNING("-Wswitch-default")												\
 	JPH_CLANG_13_PLUS_SUPPRESS_WARNING("-Wdeprecated-copy")										\
 	JPH_CLANG_13_PLUS_SUPPRESS_WARNING("-Wdeprecated-copy-with-dtor")							\
 	JPH_CLANG_16_PLUS_SUPPRESS_WARNING("-Wunsafe-buffer-usage")									\
@@ -424,7 +425,6 @@ JPH_SUPPRESS_WARNINGS_STD_END
 JPH_NAMESPACE_BEGIN
 
 // Commonly used STL types
-using std::pair;
 using std::min;
 using std::max;
 using std::abs;
@@ -434,17 +434,11 @@ using std::floor;
 using std::trunc;
 using std::round;
 using std::fmod;
-using std::swap;
-using std::size;
-using std::string;
 using std::string_view;
 using std::function;
 using std::numeric_limits;
 using std::isfinite;
 using std::isnan;
-using std::is_trivial;
-using std::is_trivially_constructible;
-using std::is_trivially_destructible;
 using std::ostream;
 using std::istream;
 
@@ -576,6 +570,24 @@ static_assert(sizeof(void *) == (JPH_CPU_ADDRESS_BITS == 64? 8 : 4), "Invalid si
 		__pragma(float_control(pop))
 #else
 	#error Undefined
+#endif
+
+// Check if Thread Sanitizer is enabled
+#ifdef __has_feature
+	#if __has_feature(thread_sanitizer)
+		#define JPH_TSAN_ENABLED
+	#endif
+#else
+	#ifdef __SANITIZE_THREAD__
+		#define JPH_TSAN_ENABLED
+	#endif
+#endif
+
+// Attribute to disable Thread Sanitizer for a particular function
+#ifdef JPH_TSAN_ENABLED
+	#define JPH_TSAN_NO_SANITIZE __attribute__((no_sanitize("thread")))
+#else
+	#define JPH_TSAN_NO_SANITIZE
 #endif
 
 JPH_NAMESPACE_END

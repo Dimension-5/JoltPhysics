@@ -90,10 +90,10 @@ public:
 	/// Remove constraint from the world
 	void						RemoveConstraint(Constraint *inConstraint)					{ mConstraintManager.Remove(&inConstraint, 1); }
 
-	/// Batch add constraints. Note that the inConstraints array is allowed to have nullptrs, these will be ignored.
+	/// Batch add constraints.
 	void						AddConstraints(Constraint **inConstraints, int inNumber)	{ mConstraintManager.Add(inConstraints, inNumber); }
 
-	/// Batch remove constraints. Note that the inConstraints array is allowed to have nullptrs, these will be ignored.
+	/// Batch remove constraints.
 	void						RemoveConstraints(Constraint **inConstraints, int inNumber)	{ mConstraintManager.Remove(inConstraints, inNumber); }
 
 	/// Get a list of all constraints
@@ -123,7 +123,7 @@ public:
 	void						SaveState(StateRecorder &inStream, EStateRecorderState inState = EStateRecorderState::All, const StateRecorderFilter *inFilter = nullptr) const;
 
 	/// Restoring state for replay. Returns false if failed.
-	bool						RestoreState(StateRecorder &inStream);
+	bool						RestoreState(StateRecorder &inStream, const StateRecorderFilter *inFilter = nullptr);
 
 	/// Saving state of a single body.
 	void						SaveBodyState(const Body &inBody, StateRecorder &inStream) const;

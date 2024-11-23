@@ -36,7 +36,9 @@ class [[nodiscard]] Array : private Allocator
 {
 public:
 	using value_type = T;
+	using allocator_type = Allocator;
 	using size_type = size_t;
+	using difference_type = typename Allocator::difference_type;
 	using pointer = T *;
 	using const_pointer = const T *;
 	using reference = T &;
@@ -100,7 +102,7 @@ private:
 	/// Destruct elements [inStart, inEnd - 1]
 	inline void				destruct(size_type inStart, size_type inEnd)
 	{
-		if constexpr (!is_trivially_destructible<T>())
+		if constexpr (!std::is_trivially_destructible<T>())
 			if (inStart < inEnd)
 				for (T *element = mElements + inStart, *element_end = mElements + inEnd; element < element_end; ++element)
 					element->~T();
@@ -120,7 +122,7 @@ public:
 		destruct(inNewSize, mSize);
 		reserve(inNewSize);
 
-		if constexpr (!is_trivially_constructible<T>())
+		if constexpr (!std::is_trivially_constructible<T>())
 			for (T *element = mElements + mSize, *element_end = mElements + inNewSize; element < element_end; ++element)
 				::new (element) T;
 		mSize = inNewSize;
@@ -560,6 +562,19 @@ public:
 		return false;
 	}
 
+	/// Get hash for this array
+	uint64					GetHash() const
+	{
+		// Hash length first
+		uint64 ret = Hash<uint32> { } (uint32(size()));
+
+		// Then hash elements
+		for (const T *element = mElements, *element_end = mElements + mSize; element < element_end; ++element)
+			HashCombine(ret, *element);
+
+		return ret;
+	}
+
 private:
 	size_type				mSize = 0;
 	size_type				mCapacity = 0;
@@ -579,16 +594,7 @@ namespace std
 	{
 		size_t operator () (const JPH::Array<T, Allocator> &inRHS) const
 		{
-			std::size_t ret = 0;
-
-			// Hash length first
-			JPH::HashCombine(ret, inRHS.size());
-
-			// Then hash elements
-			for (const T &t : inRHS)
-				JPH::HashCombine(ret, t);
-
-			return ret;
+			return std::size_t(inRHS.GetHash());
 		}
 	};
 }

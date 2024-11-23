@@ -183,7 +183,16 @@ void TriangleShape::GetSupportingFace(const SubShapeID &inSubShapeID, Vec3Arg in
 
 MassProperties TriangleShape::GetMassProperties() const
 {
-	// Object should always be static, return default mass properties
+	// We cannot calculate the volume for a triangle, so we return invalid mass properties.
+	// If you want your triangle to be dynamic, then you should provide the mass properties yourself when
+	// creating a Body:
+	//
+	// BodyCreationSettings::mOverrideMassProperties = EOverrideMassProperties::MassAndInertiaProvided;
+	// BodyCreationSettings::mMassPropertiesOverride.SetMassAndInertiaOfSolidBox(Vec3::sReplicate(1.0f), 1000.0f);
+	//
+	// Note that this makes the triangle shape behave the same as a mesh shape with a single triangle.
+	// In practice there is very little use for a dynamic triangle shape as back side collisions will be ignored
+	// so if the triangle falls the wrong way it will sink through the floor.
 	return MassProperties();
 }
 
@@ -211,7 +220,7 @@ void TriangleShape::Draw(DebugRenderer *inRenderer, RMat44Arg inCenterOfMassTran
 	RVec3 v3 = inCenterOfMassTransform * (inScale * mV3);
 
 	if (ScaleHelpers::IsInsideOut(inScale))
-		swap(v1, v2);
+		std::swap(v1, v2);
 
 	if (inDrawWireframe)
 		inRenderer->DrawWireTriangle(v1, v2, v3, inUseMaterialColors? GetMaterial()->GetDebugColor() : inColor);
@@ -260,16 +269,16 @@ void TriangleShape::CollidePoint(Vec3Arg inPoint, const SubShapeIDCreator &inSub
 	// Can't be inside a triangle
 }
 
-void TriangleShape::CollideSoftBodyVertices(Mat44Arg inCenterOfMassTransform, Vec3Arg inScale, SoftBodyVertex *ioVertices, uint inNumVertices, [[maybe_unused]] float inDeltaTime, [[maybe_unused]] Vec3Arg inDisplacementDueToGravity, int inCollidingShapeIndex) const
+void TriangleShape::CollideSoftBodyVertices(Mat44Arg inCenterOfMassTransform, Vec3Arg inScale, const CollideSoftBodyVertexIterator &inVertices, uint inNumVertices, int inCollidingShapeIndex) const
 {
 	CollideSoftBodyVerticesVsTriangles collider(inCenterOfMassTransform, inScale);
 
-	for (SoftBodyVertex *v = ioVertices, *sbv_end = ioVertices + inNumVertices; v < sbv_end; ++v)
-		if (v->mInvMass > 0.0f)
+	for (CollideSoftBodyVertexIterator v = inVertices, sbv_end = inVertices + inNumVertices; v != sbv_end; ++v)
+		if (v.GetInvMass() > 0.0f)
 		{
-			collider.StartVertex(*v);
+			collider.StartVertex(v);
 			collider.ProcessTriangle(mV1, mV2, mV3);
-			collider.FinishVertex(*v, inCollidingShapeIndex);
+			collider.FinishVertex(v, inCollidingShapeIndex);
 		}
 }
 
